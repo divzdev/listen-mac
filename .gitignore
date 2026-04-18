@@ -1,0 +1,41 @@
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcresult
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+Packages/ListenCore/.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# iOS targets (Mac-only release)
+ListeniOS/
+ListenKeyboard/
+
+# Secrets / API keys
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+.netrc
+ExportOptions.plist
+*.mobileprovision
+*.provisionprofile
+
+# Archives
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.dmg
