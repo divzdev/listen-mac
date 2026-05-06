@@ -30,7 +30,7 @@ Listen is designed to keep the default dictation path local:
 
 ## Download
 
-When public builds are available, download the latest DMG from the GitHub Releases page.
+Download the latest DMG from the [GitHub Releases page](https://github.com/divzdev/listen-mac/releases/latest).
 
 First launch checklist:
 
@@ -41,6 +41,7 @@ First launch checklist:
 5. Focus a text field and press the configured hotkey.
 
 If you build from source or run an unsigned development build, macOS may require you to open the app from Finder with Control-click > Open.
+The current public DMG is not Apple-notarized yet, so macOS may also ask you to approve it in System Settings > Privacy & Security.
 
 ## Build From Source
 
