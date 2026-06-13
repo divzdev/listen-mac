@@ -20,7 +20,10 @@ public final class DictationEntry {
     public var styleName: String?
     /// Language code (e.g. "en", "es").
     public var language: String
-    public var isFavorite: Bool
+    public var isFavorite: Bool = false
+    /// Pinned entries surface above the date-grouped history and survive bulk clears.
+    /// Default value lets SwiftData migrate existing stores automatically.
+    public var isPinned: Bool = false
 
     public init(
         text: String,
