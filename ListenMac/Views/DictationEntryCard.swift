@@ -41,6 +41,7 @@ struct DictationEntryCard: View {
     @State private var isHovered = false
     @State private var isShowingQuickLook = false
     @State private var isRewriting = false
+    @State private var didCopy = false
 
     private let radius: CGFloat = 13
 
@@ -231,7 +232,11 @@ struct DictationEntryCard: View {
         if isHovered && !isRewriting {
             HStack(spacing: 2) {
                 pillButton("arrow.up.left.and.arrow.down.right", "Expand") { isShowingQuickLook = true }
-                pillButton("doc.on.doc", "Copy") { copy() }
+                pillButton(
+                    didCopy ? "checkmark" : "doc.on.doc",
+                    didCopy ? "Copied" : "Copy",
+                    tint: didCopy ? .green : nil
+                ) { copy() }
                 pillButton("arrow.uturn.left", "Re-insert into active app") { reinsert() }
                 pillButton(
                     entry.isPinned ? "pin.slash" : "pin",
@@ -339,6 +344,15 @@ struct DictationEntryCard: View {
     private func copy() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(entry.text, forType: .string)
+        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6)) {
+            didCopy = true
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            await MainActor.run {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { didCopy = false }
+            }
+        }
     }
 
     private func reinsert() { appState.textInsertion.insertText(entry.text) }
@@ -452,6 +466,7 @@ struct DictationQuickLookView: View {
     let appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var showRaw = false
+    @State private var didCopy = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -581,10 +596,17 @@ struct DictationQuickLookView: View {
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(entry.text, forType: .string)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { didCopy = true }
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_300_000_000)
+                    await MainActor.run { withAnimation { didCopy = false } }
+                }
             } label: {
-                Label("Copy", systemImage: "doc.on.doc").font(.callout.weight(.semibold))
+                Label(didCopy ? "Copied" : "Copy", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                    .font(.callout.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
+            .tint(didCopy ? .green : .accentColor)
             .controlSize(.large)
             .keyboardShortcut("c", modifiers: .command)
         }

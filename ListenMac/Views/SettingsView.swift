@@ -199,6 +199,19 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear(perform: loadPersistedHotkey)
+    }
+
+    /// Reflect the saved custom shortcut in the recorder field (it's plain @State that would
+    /// otherwise reset to the default ⌘⌥D every time Settings is opened).
+    private func loadPersistedHotkey() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: "hotkeyKeyCode") != nil else { return }
+        if let key = Key(carbonKeyCode: UInt32(defaults.integer(forKey: "hotkeyKeyCode"))) {
+            hotkeyKey = key
+        }
+        hotkeyModifiers = NSEvent.ModifierFlags(
+            rawValue: UInt(defaults.integer(forKey: "hotkeyModifierFlags")))
     }
 
     private var modelTab: some View {

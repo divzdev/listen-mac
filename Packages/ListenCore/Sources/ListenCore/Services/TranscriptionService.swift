@@ -24,9 +24,13 @@ public final class TranscriptionService: ObservableObject {
     public func loadModel(name: String? = nil) async throws {
         let model = name ?? currentModelName
         currentModelName = model
-        modelLoadProgress = "Loading \(model) model…"
+        modelLoadProgress = "Preparing \(model) model…"
 
-        let config = WhisperKitConfig(model: model, verbose: false)
+        // prewarm forces Core ML's device-specific model specialization to happen NOW, during
+        // this visible "preparing" phase, instead of lazily on the user's first dictation.
+        // Without it the first transcription on a fresh install (or after an OS update evicts
+        // Core ML's cache) pays the full compile cost and appears to hang in "processing".
+        let config = WhisperKitConfig(model: model, verbose: false, prewarm: true, load: true)
         whisperKit = try await WhisperKit(config)
 
         isModelLoaded = true

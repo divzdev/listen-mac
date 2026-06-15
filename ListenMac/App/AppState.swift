@@ -4,6 +4,30 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
+/// Thrown when transcription exceeds its hard time budget so the UI can recover
+/// instead of hanging in `.processing` forever (e.g. a stuck WhisperKit on first use).
+struct TranscriptionTimeoutError: LocalizedError {
+    var errorDescription: String? {
+        "Transcription timed out. The Whisper model may still be loading or failed to start — "
+            + "try again, or pick a smaller model in Settings → Model."
+    }
+}
+
+/// Run an async operation with a hard timeout. Throws `TranscriptionTimeoutError` if it
+/// doesn't finish in `seconds`.
+func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw TranscriptionTimeoutError()
+        }
+        defer { group.cancelAll() }
+        guard let result = try await group.next() else { throw TranscriptionTimeoutError() }
+        return result
+    }
+}
+
 /// Central app state shared across all views via EnvironmentObject.
 @MainActor
 final class AppState: ObservableObject {
@@ -135,6 +159,7 @@ final class AppState: ObservableObject {
             print("[Listen] Safety timeout triggered — forcing stop")
             self?.forceIdle()
         }
+        hotKeyManager.loadPersistedShortcut()  // restore the user's saved custom shortcut
         hotKeyManager.register()
 
         // Wire up silence detection → auto-stop
@@ -276,10 +301,13 @@ final class AppState: ObservableObject {
             do {
                 let lang = UserDefaults.standard.string(forKey: "language") ?? "en"
                 print("[Listen] Transcribing \(audioBuffer.count) samples, lang=\(lang)...")
-                let rawText = try await transcriptionService.transcribe(
-                    audioArray: audioBuffer,
-                    language: lang == "auto" ? nil : lang
-                )
+                // Hard timeout so a stuck WhisperKit can't strand us in `.processing` forever.
+                let rawText = try await withTimeout(seconds: 60) {
+                    try await self.transcriptionService.transcribe(
+                        audioArray: audioBuffer,
+                        language: lang == "auto" ? nil : lang
+                    )
+                }
                 print("[Listen] Transcription result: \"\(rawText)\"")
 
                 guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -351,7 +379,13 @@ final class AppState: ObservableObject {
                 print("[Listen] Inserting text: \"\(processed)\"")
                 // Small delay to ensure the target app has focus back
                 try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
-                textInsertion.insertText(processed)
+                let pasted = textInsertion.insertText(processed)
+                if !pasted {
+                    errorMessage =
+                        "Couldn't paste automatically — enable Accessibility for Listen in "
+                        + "System Settings → Privacy & Security → Accessibility. Your text is on "
+                        + "the clipboard; press ⌘V to paste it."
+                }
 
                 // Store for re-dictate
                 lastDictationText = processed
@@ -375,7 +409,12 @@ final class AppState: ObservableObject {
                 // Send notification
                 sendCompletionNotification(text: processed)
             } catch {
-                errorMessage = "Transcription failed: \(error.localizedDescription)"
+                if error is TranscriptionTimeoutError {
+                    errorMessage = error.localizedDescription
+                } else {
+                    errorMessage = "Transcription failed: \(error.localizedDescription)"
+                }
+                print("[Listen] Transcription error: \(error.localizedDescription)")
                 overlayController.dismiss()
                 status = .idle
             }

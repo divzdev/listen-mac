@@ -6,15 +6,18 @@ import Cocoa
 final class TextInsertionService {
 
     /// Insert text into the frontmost app's focused text field via clipboard paste.
-    func insertText(_ text: String) {
+    /// Returns `false` if the ⌘V couldn't be delivered (e.g. Accessibility/Automation not
+    /// granted) so the caller can tell the user instead of failing silently.
+    @discardableResult
+    func insertText(_ text: String) -> Bool {
         print("[Listen] Inserting text via clipboard paste (\(text.count) chars)")
-        insertViaClipboard(text)
+        return insertViaClipboard(text)
     }
 
     // MARK: - Clipboard Paste
 
-    /// Insert text by putting it on the clipboard and simulating ⌘V via AppleScript.
-    private func insertViaClipboard(_ text: String) {
+    /// Insert text by putting it on the clipboard and simulating ⌘V.
+    private func insertViaClipboard(_ text: String) -> Bool {
         let pasteboard = NSPasteboard.general
 
         // Save current clipboard contents to restore later
@@ -28,21 +31,22 @@ final class TextInsertionService {
         // Small delay to let pasteboard update propagate
         usleep(50_000)  // 50ms
 
-        // Simulate ⌘V via AppleScript
-        simulatePaste()
-        print("[Listen] Paste simulated")
+        let pasted = simulatePaste()
+        print("[Listen] Paste \(pasted ? "succeeded" : "FAILED")")
 
-        // Restore clipboard after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if let savedType, let savedData {
+        // Only restore the previous clipboard if we actually pasted. If we couldn't, leave our
+        // text on the clipboard so the user can press ⌘V manually.
+        if pasted, let savedType, let savedData {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 pasteboard.clearContents()
                 pasteboard.setData(savedData, forType: savedType)
             }
         }
+        return pasted
     }
 
-    /// Simulate pressing ⌘V via multiple strategies.
-    private func simulatePaste() {
+    /// Simulate pressing ⌘V. Returns whether the keystroke was delivered.
+    private func simulatePaste() -> Bool {
         let trusted = AXIsProcessTrusted()
         print("[Listen] AXIsProcessTrusted: \(trusted)")
 
@@ -63,10 +67,10 @@ final class TextInsertionService {
             keyDown?.post(tap: .cgAnnotatedSessionEventTap)
             usleep(20_000)
             keyUp?.post(tap: .cgAnnotatedSessionEventTap)
-            return
+            return true
         }
 
-        // Strategy 2: osascript subprocess (inherits broader permissions)
+        // Strategy 2: osascript subprocess (needs Automation permission for System Events)
         print("[Listen] Using osascript subprocess paste")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -81,13 +85,15 @@ final class TextInsertionService {
             let status = process.terminationStatus
             if status == 0 {
                 print("[Listen] osascript paste succeeded")
-            } else {
-                let errData = pipe.fileHandleForReading.readDataToEndOfFile()
-                let errStr = String(data: errData, encoding: .utf8) ?? ""
-                print("[Listen] osascript failed (status \(status)): \(errStr)")
+                return true
             }
+            let errData = pipe.fileHandleForReading.readDataToEndOfFile()
+            let errStr = String(data: errData, encoding: .utf8) ?? ""
+            print("[Listen] osascript failed (status \(status)): \(errStr)")
+            return false
         } catch {
             print("[Listen] osascript launch failed: \(error)")
+            return false
         }
     }
 }
