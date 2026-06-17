@@ -171,6 +171,11 @@ final class AppState: ObservableObject {
             }
         }
 
+        audioCapture.onCaptureError = { [weak self] message in
+            self?.errorMessage = message
+            self?.forceIdle()
+        }
+
         // Observe audio level for UI metering and overlay
         audioCapture.$audioLevel
             .receive(on: DispatchQueue.main)

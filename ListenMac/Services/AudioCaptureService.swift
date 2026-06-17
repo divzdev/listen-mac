@@ -17,6 +17,10 @@ final class AudioCaptureService: ObservableObject {
     /// Callback fired when silence is detected during recording.
     var onSilenceDetected: (() -> Void)?
 
+    /// Callback fired (on the main queue) when capture can't start — e.g. no microphone or an
+    /// audio-engine failure. Lets the app show a message instead of failing silently.
+    var onCaptureError: ((String) -> Void)?
+
     private var configChangeObserver: NSObjectProtocol?
 
     init() {
@@ -134,20 +138,29 @@ final class AudioCaptureService: ObservableObject {
     // MARK: - Private
 
     private func beginCapture() {
+        guard !isRecording else {
+            print("[Listen] beginCapture ignored — already recording")
+            return
+        }
+
         let inputNode = audioEngine.inputNode
 
         if audioEngine.isRunning {
             audioEngine.stop()
         }
-
-        // Query format BEFORE removing the tap — on macOS, calling outputFormat(forBus:)
-        // on a stopped or freshly-reset engine can trigger an internal reconfiguration
-        // that reinstalls an internal tap. Removing AFTER the query ensures we catch it.
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-
-        // Remove tap as close to installTap as possible to prevent any intermediate
-        // reconfiguration from sneaking in a tap between remove and install.
+        // Always clear any existing tap before installing a new one.
         inputNode.removeTap(onBus: 0)
+
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        // An unavailable / not-ready input device reports a 0 Hz, 0-channel format, which makes
+        // installTap raise a fatal exception. Bail gracefully with a message instead.
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            print("[Listen] Invalid input format: \(inputFormat)")
+            notifyCaptureError(
+                "No microphone is available. Check your input device and microphone permission "
+                    + "in System Settings → Privacy & Security → Microphone.")
+            return
+        }
 
         // WhisperKit expects 16kHz mono Float32
         guard
@@ -172,58 +185,81 @@ final class AudioCaptureService: ObservableObject {
         bufferLock.unlock()
         silenceDetector.reset()
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
-            [weak self] buffer, _ in
-            guard let self else { return }
+        // installTap can raise an uncatchable Obj-C exception (format mismatch, a lingering
+        // tap). Route it through the Obj-C catcher so a bad audio state can never abort the app.
+        do {
+            try ObjCExceptionCatcher.perform {
+                inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
+                    [weak self] buffer, _ in
+                    guard let self else { return }
 
-            // Convert to 16kHz mono
-            let frameCount = AVAudioFrameCount(
-                Double(buffer.frameLength) * 16000.0 / inputFormat.sampleRate
-            )
-            guard
-                let convertedBuffer = AVAudioPCMBuffer(
-                    pcmFormat: targetFormat, frameCapacity: frameCount)
-            else { return }
+                    // Convert to 16kHz mono
+                    let frameCount = AVAudioFrameCount(
+                        Double(buffer.frameLength) * 16000.0 / inputFormat.sampleRate
+                    )
+                    guard
+                        let convertedBuffer = AVAudioPCMBuffer(
+                            pcmFormat: targetFormat, frameCapacity: frameCount)
+                    else { return }
 
-            var error: NSError?
-            converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
+                    var error: NSError?
+                    converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                        outStatus.pointee = .haveData
+                        return buffer
+                    }
 
-            if let error {
-                print("[Listen] Audio conversion error: \(error)")
-                return
-            }
+                    if let error {
+                        print("[Listen] Audio conversion error: \(error)")
+                        return
+                    }
 
-            guard let channelData = convertedBuffer.floatChannelData?[0] else { return }
-            let samples = Array(
-                UnsafeBufferPointer(start: channelData, count: Int(convertedBuffer.frameLength)))
+                    guard let channelData = convertedBuffer.floatChannelData?[0] else { return }
+                    let samples = Array(
+                        UnsafeBufferPointer(
+                            start: channelData, count: Int(convertedBuffer.frameLength)))
 
-            // Accumulate samples
-            self.bufferLock.lock()
-            self.audioBuffer.append(contentsOf: samples)
-            self.bufferLock.unlock()
+                    // Accumulate samples
+                    self.bufferLock.lock()
+                    self.audioBuffer.append(contentsOf: samples)
+                    self.bufferLock.unlock()
 
-            // Update audio level for UI metering
-            let rms = self.calculateRMS(samples)
-            DispatchQueue.main.async {
-                self.audioLevel = rms
-            }
+                    // Update audio level for UI metering
+                    let rms = self.calculateRMS(samples)
+                    DispatchQueue.main.async {
+                        self.audioLevel = rms
+                    }
 
-            // Check for silence
-            if self.silenceDetector.isSilence(rms: rms) {
-                DispatchQueue.main.async {
-                    self.onSilenceDetected?()
+                    // Check for silence
+                    if self.silenceDetector.isSilence(rms: rms) {
+                        DispatchQueue.main.async {
+                            self.onSilenceDetected?()
+                        }
+                    }
                 }
             }
+        } catch {
+            print("[Listen] installTap failed: \(error.localizedDescription)")
+            inputNode.removeTap(onBus: 0)
+            notifyCaptureError("Couldn't start the microphone: \(error.localizedDescription)")
+            return
         }
 
+        audioEngine.prepare()
         do {
             try audioEngine.start()
             isRecording = true
         } catch {
             print("[Listen] Failed to start audio engine: \(error)")
+            inputNode.removeTap(onBus: 0)
+            notifyCaptureError("Couldn't start audio: \(error.localizedDescription)")
+        }
+    }
+
+    private func notifyCaptureError(_ message: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = false
+            self?.audioLevel = 0.0
+            self?.onCaptureError?(message)
         }
     }
 
