@@ -13,7 +13,7 @@ This repository is the public, open-source macOS version of Listen.
 - Style presets for Casual, Work, and Email output
 - Per-app style profiles
 - Custom dictionary and snippet expansion
-- Searchable dictation history with export/import
+- Dictation history with comfortable, compact, and gallery views — pin, favorite, copy, re-insert, and a full-text detail view, plus search and Markdown/JSON export
 - Optional grammar correction and rewriting with OpenAI-compatible APIs or local Ollama
 - No telemetry, analytics, accounts, or bundled cloud service
 
@@ -32,13 +32,18 @@ Listen is designed to keep the default dictation path local:
 
 Download the latest DMG from the [GitHub Releases page](https://github.com/divzdev/listen-mac/releases/latest).
 
+**Requirements:** an Apple Silicon Mac (M1 or newer) running macOS 14 Sonoma or later. The current build is Apple Silicon only.
+
 First launch checklist:
 
 1. Move Listen to Applications.
 2. Open Listen.
 3. Grant Microphone access when prompted.
 4. Grant Accessibility access in System Settings > Privacy & Security > Accessibility so Listen can insert text into other apps.
-5. Focus a text field and press the configured hotkey.
+5. Wait for the model to finish preparing on first launch (it is downloaded and optimized for your Mac once).
+6. Focus a text field and hold the configured hotkey to dictate. The default trigger is the **fn** key.
+
+**Using an external keyboard?** Many external keyboards have no `fn` key, so the default trigger will not fire. Open **Listen > Settings > Trigger**, choose **Custom keyboard shortcut**, and record a combo such as `⌘⌥D`. It is saved and works on any keyboard.
 
 If you build from source or run an unsigned development build, macOS may require you to open the app from Finder with Control-click > Open.
 The current public DMG is not Apple-notarized yet, so macOS may also ask you to approve it in System Settings > Privacy & Security.

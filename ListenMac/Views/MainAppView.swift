@@ -4,7 +4,7 @@ import SwiftUI
 
 // MARK: - Apple Design System (Light + Dark)
 
-private enum DS {
+enum DS {
     // Adaptive colors that follow system appearance
     static let bg = Color(nsColor: .windowBackgroundColor)
     static let sidebarBg = Color.clear  // Use material instead
@@ -128,28 +128,41 @@ struct MainAppView: View {
     }
 
     private func sidebarButton(_ tab: SidebarTab) -> some View {
-        Button {
+        let isSelected = selectedTab == tab
+        return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selectedTab = tab }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 11) {
                 Image(systemName: tab.icon)
                     .font(.system(size: 14, weight: .medium))
                     .frame(width: 22)
-                    .foregroundStyle(selectedTab == tab ? DS.accent : DS.textSecondary)
+                    .foregroundStyle(isSelected ? DS.accent : DS.textSecondary)
                 Text(tab.rawValue)
-                    .font(.system(size: 14, weight: selectedTab == tab ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tab ? DS.textPrimary : DS.textSecondary)
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? DS.textPrimary : DS.textSecondary)
                 Spacer()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(selectedTab == tab ? DS.sidebarSelected : Color.clear)
-            )
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(
+                            LinearGradient(
+                                colors: [DS.accent.opacity(0.30), DS.accent.opacity(0.10)],
+                                startPoint: .leading, endPoint: .trailing))
+                }
+            }
+            // Clipnest-style accent bar on the leading edge — replaces the bordered box look.
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    Capsule().fill(DS.accent).frame(width: 3, height: 16)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()  // kill the macOS focus ring that drew the boxy border
     }
 
     private func sidebarBottomItem(icon: String, label: String, action: @escaping () -> Void)
@@ -196,17 +209,8 @@ struct MainAppView: View {
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \DictationEntry.timestamp, order: .reverse) private var entries: [DictationEntry]
     @Binding var selectedTab: MainAppView.SidebarTab
-    @State private var historySearch = ""
-    @State private var isSearchingHistory = false
-    @State private var historyPage = 0
-    @State private var showDeleteConfirm = false
-    @State private var deleteAction: DeleteAction = .all
-    private let pageSize = 20
-
-    enum DeleteAction { case sevenDays, thirtyDays, all }
 
     var body: some View {
         ScrollView {
@@ -214,15 +218,17 @@ struct HomeView: View {
                 // Greeting
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Welcome back, \(appState.userFirstName).")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(.largeTitle.bold())
                         .foregroundStyle(DS.textPrimary)
                         .tracking(-0.5)
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
 
                     Text("Start dictating by holding ")
-                        .font(.system(size: 17, weight: .regular))
+                        .font(.title3)
                         .foregroundStyle(DS.textSecondary)
                         + Text("fn")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .font(.body.weight(.bold).monospaced())
                         .foregroundStyle(DS.accent)
                 }
                 .padding(.horizontal, 36)
@@ -240,13 +246,22 @@ struct HomeView: View {
                     .padding(.bottom, 36)
 
                 // History
-                historySection
+                RecentDictationsView()
                     .padding(.horizontal, 36)
                     .padding(.bottom, 32)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(DS.bg)
+        .background {
+            DS.bg.overlay(alignment: .top) {
+                LinearGradient(
+                    colors: [DS.accent.opacity(0.12), Color.clear],
+                    startPoint: .top, endPoint: .bottom)
+                    .frame(height: 320)
+                    .allowsHitTesting(false)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var heroBanner: some View {
@@ -289,11 +304,11 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Your voice, your style.")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.title.bold())
                     .foregroundStyle(.white)
 
                 Text("Configure writing styles that match how you actually communicate.")
-                    .font(.system(size: 15))
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.75))
 
                 Button {
@@ -302,7 +317,7 @@ struct HomeView: View {
                     }
                 } label: {
                     Text("Set up styles")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 9)
@@ -348,20 +363,22 @@ struct HomeView: View {
     private func statCard(title: String, value: String, icon: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .medium))
+                .font(.title3.weight(.medium))
                 .foregroundStyle(color)
 
             Text(value)
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(DS.textPrimary)
 
             Text(title)
-                .font(.system(size: 13))
+                .font(.callout)
                 .foregroundStyle(DS.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.glassRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
         .overlay(
             RoundedRectangle(cornerRadius: DS.glassRadius)
                 .stroke(DS.cardBorder, lineWidth: 0.5)
@@ -369,322 +386,8 @@ struct HomeView: View {
         .shadow(color: DS.glassShadow, radius: 8, y: 2)
     }
 
-    private var historySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header row with search & delete controls
-            HStack(alignment: .center) {
-                Text("Recent Dictations")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(DS.textPrimary)
-
-                Spacer()
-
-                HStack(spacing: 12) {
-                    // Search toggle
-                    Button {
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            isSearchingHistory.toggle()
-                            if !isSearchingHistory {
-                                historySearch = ""
-                                historyPage = 0
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 13))
-                            .foregroundStyle(DS.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Delete menu
-                    if !entries.isEmpty {
-                        Menu {
-                            Button {
-                                deleteAction = .sevenDays
-                                showDeleteConfirm = true
-                            } label: {
-                                Label(
-                                    "Delete older than 7 days", systemImage: "calendar.badge.minus")
-                            }
-                            Button {
-                                deleteAction = .thirtyDays
-                                showDeleteConfirm = true
-                            } label: {
-                                Label("Delete older than 30 days", systemImage: "calendar")
-                            }
-                            Divider()
-                            Button(role: .destructive) {
-                                deleteAction = .all
-                                showDeleteConfirm = true
-                            } label: {
-                                Label("Clear all dictations", systemImage: "trash")
-                            }
-                        } label: {
-                            Label("Manage", systemImage: "ellipsis.circle")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(DS.textSecondary)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                    }
-                }
-            }
-
-            // Search bar
-            if isSearchingHistory {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13))
-                        .foregroundStyle(DS.textTertiary)
-                    TextField("Search dictations…", text: $historySearch)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .foregroundStyle(DS.textPrimary)
-                        .onChange(of: historySearch) { _, _ in historyPage = 0 }
-                    if !historySearch.isEmpty {
-                        Button {
-                            historySearch = ""
-                            historyPage = 0
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundStyle(DS.textTertiary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(DS.cardBorder, lineWidth: 0.5))
-            }
-
-            if filteredEntries.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 40))
-                        .foregroundStyle(DS.divider)
-                    Text(historySearch.isEmpty ? "No dictations yet" : "No results")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DS.textSecondary)
-                    Text(
-                        historySearch.isEmpty
-                            ? "Hold fn and start speaking to create your first dictation"
-                            : "Try a different search term"
-                    )
-                    .font(.system(size: 14))
-                    .foregroundStyle(DS.textTertiary)
-                    .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 48)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.glassRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.glassRadius).stroke(
-                        DS.cardBorder, lineWidth: 0.5))
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(pagedGroups, id: \.header) { group in
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(group.header)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(DS.textTertiary)
-                                .textCase(.uppercase)
-                                .tracking(0.6)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
-                                .padding(.bottom, 10)
-
-                            ForEach(group.entries) { entry in
-                                HistoryEntryRow(entry: entry, onDelete: { deleteEntry(entry) })
-                                if entry.id != group.entries.last?.id {
-                                    Rectangle()
-                                        .fill(DS.divider)
-                                        .frame(height: 0.5)
-                                        .padding(.leading, 100)
-                                }
-                            }
-                        }
-                    }
-                }
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.glassRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.glassRadius).stroke(
-                        DS.cardBorder, lineWidth: 0.5)
-                )
-                .shadow(color: DS.glassShadow, radius: 8, y: 2)
-
-                // Pagination controls
-                if totalPages > 1 {
-                    HStack {
-                        Text("\(filteredEntries.count) dictations")
-                            .font(.system(size: 12))
-                            .foregroundStyle(DS.textTertiary)
-                        Spacer()
-                        Button {
-                            withAnimation { historyPage = max(0, historyPage - 1) }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(historyPage > 0 ? DS.accent : DS.textTertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(historyPage == 0)
-
-                        Text("Page \(historyPage + 1) of \(totalPages)")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(DS.textSecondary)
-
-                        Button {
-                            withAnimation { historyPage = min(totalPages - 1, historyPage + 1) }
-                        } label: {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(
-                                    historyPage < totalPages - 1 ? DS.accent : DS.textTertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(historyPage >= totalPages - 1)
-                    }
-                    .padding(.top, 12)
-                }
-            }
-        }
-        .alert("Delete Dictations", isPresented: $showDeleteConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) { performDelete() }
-        } message: {
-            switch deleteAction {
-            case .sevenDays: Text("Delete all dictations older than 7 days? This cannot be undone.")
-            case .thirtyDays:
-                Text("Delete all dictations older than 30 days? This cannot be undone.")
-            case .all: Text("Delete ALL dictations? This cannot be undone.")
-            }
-        }
-    }
-
-    // MARK: - History helpers
-
-    private var filteredEntries: [DictationEntry] {
-        if historySearch.isEmpty { return Array(entries) }
-        return entries.filter { $0.text.localizedCaseInsensitiveContains(historySearch) }
-    }
-
-    private var totalPages: Int {
-        max(1, Int(ceil(Double(filteredEntries.count) / Double(pageSize))))
-    }
-
-    private var pagedEntries: [DictationEntry] {
-        let start = historyPage * pageSize
-        let end = min(start + pageSize, filteredEntries.count)
-        guard start < filteredEntries.count else { return [] }
-        return Array(filteredEntries[start..<end])
-    }
-
-    private var pagedGroups: [DateGroup] {
-        let calendar = Calendar.current
-        var groups: [String: [DictationEntry]] = [:]
-        var order: [String] = []
-
-        for entry in pagedEntries {
-            let header: String
-            if calendar.isDateInToday(entry.timestamp) {
-                header = "Today"
-            } else if calendar.isDateInYesterday(entry.timestamp) {
-                header = "Yesterday"
-            } else {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "EEEE, MMM d"
-                header = formatter.string(from: entry.timestamp)
-            }
-            if groups[header] == nil {
-                groups[header] = []
-                order.append(header)
-            }
-            groups[header]?.append(entry)
-        }
-        return order.map { DateGroup(header: $0, entries: groups[$0] ?? []) }
-    }
-
-    private func deleteEntry(_ entry: DictationEntry) {
-        modelContext.delete(entry)
-        try? modelContext.save()
-    }
-
-    private func performDelete() {
-        let cutoff: Date?
-        switch deleteAction {
-        case .sevenDays: cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date())
-        case .thirtyDays: cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())
-        case .all: cutoff = nil
-        }
-
-        for entry in entries {
-            if let cutoff {
-                if entry.timestamp < cutoff { modelContext.delete(entry) }
-            } else {
-                modelContext.delete(entry)
-            }
-        }
-        try? modelContext.save()
-        historyPage = 0
-    }
 }
 
-struct DateGroup {
-    let header: String
-    let entries: [DictationEntry]
-}
-
-struct HistoryEntryRow: View {
-    let entry: DictationEntry
-    var onDelete: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Text(timeString)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(DS.textTertiary)
-                .frame(width: 72, alignment: .trailing)
-
-            Text(entry.text)
-                .font(.system(size: 14))
-                .foregroundStyle(DS.textPrimary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 20)
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button("Copy") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(entry.text, forType: .string)
-            }
-            Button("Re-insert") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(entry.text, forType: .string)
-                let source = CGEventSource(stateID: .hidSystemState)
-                let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-                keyDown?.flags = .maskCommand
-                let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-                keyUp?.flags = .maskCommand
-                keyDown?.post(tap: .cghidEventTap)
-                keyUp?.post(tap: .cghidEventTap)
-            }
-            Divider()
-            Button("Delete", role: .destructive) {
-                onDelete?()
-            }
-        }
-    }
-
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: entry.timestamp)
-    }
-}
 
 // MARK: - Style View
 

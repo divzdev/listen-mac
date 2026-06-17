@@ -29,6 +29,10 @@ final class HotKeyManager {
     private var currentKey: Key = .d
     private var currentModifiers: NSEvent.ModifierFlags = [.command, .option]
 
+    // Persistence keys for the custom shortcut so it survives relaunch.
+    private static let keyCodeDefault = "hotkeyKeyCode"
+    private static let modifiersDefault = "hotkeyModifierFlags"
+
     // fn key code
     private static let fnKeyCode: UInt16 = 63
 
@@ -75,14 +79,29 @@ final class HotKeyManager {
         isRecording = false
     }
 
-    /// Change the custom shortcut key combination.
+    /// Change the custom shortcut key combination, persisting it across launches.
     func updateShortcut(key: Key, modifiers: NSEvent.ModifierFlags) {
         currentKey = key
         currentModifiers = modifiers
+        // Persist so the choice survives relaunch (was previously in-memory only — the
+        // shortcut reverted to the default ⌘⌥D every time the app restarted).
+        UserDefaults.standard.set(Int(key.carbonKeyCode), forKey: Self.keyCodeDefault)
+        UserDefaults.standard.set(Int(modifiers.rawValue), forKey: Self.modifiersDefault)
         if triggerMethod == .customHotkey {
             unregister()
             register()
         }
+    }
+
+    /// Restore a previously saved custom shortcut from UserDefaults. Call before `register()`.
+    func loadPersistedShortcut() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: Self.keyCodeDefault) != nil else { return }
+        if let key = Key(carbonKeyCode: UInt32(defaults.integer(forKey: Self.keyCodeDefault))) {
+            currentKey = key
+        }
+        currentModifiers = NSEvent.ModifierFlags(
+            rawValue: UInt(defaults.integer(forKey: Self.modifiersDefault)))
     }
 
     // MARK: - fn Key Support

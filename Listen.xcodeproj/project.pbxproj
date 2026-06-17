@@ -13,7 +13,6 @@
 		2B0348AE86250D60036E41CF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F998BFB7F8D7EA55B8BD8B /* AppDelegate.swift */; };
 		45321A2DBD1D80BCFD058B80 /* MainAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE5E23D796E208FAFC79C22 /* MainAppView.swift */; };
 		4867B24D9C23744A7F1FED41 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8852BB2222D09F77A510B5 /* OnboardingView.swift */; };
-		4A257D36CB44D54091F71560 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB29E68EB5642F85985A1EEB /* HistoryView.swift */; };
 		4D3C9EBE9515AB9ACA10778B /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = D8032F1F864913FDAB874921 /* HotKey */; };
 		5787D5E51F92C6B08B6D85BA /* DictionaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE4989D45B3B0E390B13E3A /* DictionaryView.swift */; };
 		69432BC7F9B443947E4E32F6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625D95233FEADF1E7180593 /* SettingsView.swift */; };
@@ -22,8 +21,10 @@
 		91EC0C6392E7342259759073 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91262C04DAF29E98FBC0294 /* AudioCaptureService.swift */; };
 		A1263111E90E9DFCA2004386 /* SilenceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5CA52B062147BF89B293A88 /* SilenceDetector.swift */; };
 		AF6F01D58C1EDAB48F6AA703 /* TextInsertionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1894EC6307B992C2BD6277F /* TextInsertionService.swift */; };
+		BA9C4E051A9B53088253117D /* RecentDictationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2730A6E548FBA11BB598CD /* RecentDictationsView.swift */; };
 		C66F95166276DBCF73F60474 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3D373D212A182CF8AFC04C /* AppState.swift */; };
 		D72DCB99F4A9364E2B2E0779 /* SnippetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD36F784E0DFFA8CD5197984 /* SnippetsView.swift */; };
+		E51368A67D6E6E100C7A5BBC /* DictationEntryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAAD50889459B87901278417 /* DictationEntryCard.swift */; };
 		ECFEE443E5164DA183F560AF /* ListenCore in Frameworks */ = {isa = PBXBuildFile; productRef = 617718F7668A15D98756E93C /* ListenCore */; };
 		FB72158410FB5C94B4EA98AC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9371A2034FFDFF18EC5C1AC0 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -39,8 +40,9 @@
 		8CFA60D0E55D145664A38596 /* ListenMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ListenMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9371A2034FFDFF18EC5C1AC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A5CA52B062147BF89B293A88 /* SilenceDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SilenceDetector.swift; sourceTree = "<group>"; };
+		AF2730A6E548FBA11BB598CD /* RecentDictationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentDictationsView.swift; sourceTree = "<group>"; };
 		B5AFC70656E29D097D3C7D1B /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
-		BB29E68EB5642F85985A1EEB /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		BAAD50889459B87901278417 /* DictationEntryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationEntryCard.swift; sourceTree = "<group>"; };
 		BEE5E23D796E208FAFC79C22 /* MainAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainAppView.swift; sourceTree = "<group>"; };
 		C31C83A3F49B425AC5432E27 /* KeyRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderView.swift; sourceTree = "<group>"; };
 		C3998407AA0C848EE9544545 /* AppProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProfilesView.swift; sourceTree = "<group>"; };
@@ -69,11 +71,12 @@
 			isa = PBXGroup;
 			children = (
 				C3998407AA0C848EE9544545 /* AppProfilesView.swift */,
+				BAAD50889459B87901278417 /* DictationEntryCard.swift */,
 				1AE4989D45B3B0E390B13E3A /* DictionaryView.swift */,
-				BB29E68EB5642F85985A1EEB /* HistoryView.swift */,
 				C31C83A3F49B425AC5432E27 /* KeyRecorderView.swift */,
 				BEE5E23D796E208FAFC79C22 /* MainAppView.swift */,
 				2A8852BB2222D09F77A510B5 /* OnboardingView.swift */,
+				AF2730A6E548FBA11BB598CD /* RecentDictationsView.swift */,
 				7625D95233FEADF1E7180593 /* SettingsView.swift */,
 				FD36F784E0DFFA8CD5197984 /* SnippetsView.swift */,
 				D98343389A1ECA7212C9A7F8 /* TranscriptOverlay.swift */,
@@ -226,13 +229,14 @@
 				758FC018832DDB858E91B734 /* AppProfilesView.swift in Sources */,
 				C66F95166276DBCF73F60474 /* AppState.swift in Sources */,
 				91EC0C6392E7342259759073 /* AudioCaptureService.swift in Sources */,
+				E51368A67D6E6E100C7A5BBC /* DictationEntryCard.swift in Sources */,
 				5787D5E51F92C6B08B6D85BA /* DictionaryView.swift in Sources */,
-				4A257D36CB44D54091F71560 /* HistoryView.swift in Sources */,
 				7316CCAD306E63EF6DD425DF /* HotKeyManager.swift in Sources */,
 				09D7677D87A4BFD7FB3011BD /* KeyRecorderView.swift in Sources */,
 				2008125B5B6DED90FE7C4A29 /* ListenApp.swift in Sources */,
 				45321A2DBD1D80BCFD058B80 /* MainAppView.swift in Sources */,
 				4867B24D9C23744A7F1FED41 /* OnboardingView.swift in Sources */,
+				BA9C4E051A9B53088253117D /* RecentDictationsView.swift in Sources */,
 				69432BC7F9B443947E4E32F6 /* SettingsView.swift in Sources */,
 				A1263111E90E9DFCA2004386 /* SilenceDetector.swift in Sources */,
 				D72DCB99F4A9364E2B2E0779 /* SnippetsView.swift in Sources */,
@@ -250,12 +254,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ListenMac/ListenMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = ListenMac/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.divyam.listen.mac;
 				PRODUCT_NAME = Listen;
 				SDKROOT = macosx;
@@ -325,12 +329,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ListenMac/ListenMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = ListenMac/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.divyam.listen.mac;
 				PRODUCT_NAME = Listen;
 				SDKROOT = macosx;
