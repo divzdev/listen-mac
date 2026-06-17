@@ -23,6 +23,13 @@ enum DS {
     static let gradientMid = Color(red: 0.15, green: 0.30, blue: 0.65)
     static let gradientEnd = Color(red: 0.10, green: 0.50, blue: 0.60)
 
+    // Category accent palette — gives each section a distinct identity.
+    static let tintHome = Color(red: 0.40, green: 0.55, blue: 1.00)
+    static let tintDictionary = Color(red: 0.27, green: 0.83, blue: 0.64)
+    static let tintSnippets = Color(red: 1.00, green: 0.68, blue: 0.30)
+    static let tintStyle = Color(red: 0.82, green: 0.42, blue: 1.00)
+    static let tintScratchpad = Color(red: 0.35, green: 0.74, blue: 1.00)
+
     // Glass card styling helper
     static let glassRadius: CGFloat = 16
     static let glassShadow = Color.black.opacity(0.08)
@@ -46,11 +53,21 @@ struct MainAppView: View {
 
         var icon: String {
             switch self {
-            case .home: return "house"
-            case .dictionary: return "character.book.closed"
+            case .home: return "house.fill"
+            case .dictionary: return "character.book.closed.fill"
             case .snippets: return "text.quote"
-            case .style: return "paintbrush"
+            case .style: return "paintbrush.fill"
             case .scratchpad: return "note.text"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .home: return DS.tintHome
+            case .dictionary: return DS.tintDictionary
+            case .snippets: return DS.tintSnippets
+            case .style: return DS.tintStyle
+            case .scratchpad: return DS.tintScratchpad
             }
         }
     }
@@ -136,7 +153,7 @@ struct MainAppView: View {
                 Image(systemName: tab.icon)
                     .font(.system(size: 14, weight: .medium))
                     .frame(width: 22)
-                    .foregroundStyle(isSelected ? DS.accent : DS.textSecondary)
+                    .foregroundStyle(isSelected ? tab.tint : tab.tint.opacity(0.6))
                 Text(tab.rawValue)
                     .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? DS.textPrimary : DS.textSecondary)
@@ -149,14 +166,14 @@ struct MainAppView: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(
                             LinearGradient(
-                                colors: [DS.accent.opacity(0.30), DS.accent.opacity(0.10)],
+                                colors: [tab.tint.opacity(0.22), tab.tint.opacity(0.06)],
                                 startPoint: .leading, endPoint: .trailing))
                 }
             }
-            // Clipnest-style accent bar on the leading edge — replaces the bordered box look.
+            // Accent bar on the leading edge, colored to the section.
             .overlay(alignment: .leading) {
                 if isSelected {
-                    Capsule().fill(DS.accent).frame(width: 3, height: 16)
+                    Capsule().fill(tab.tint).frame(width: 3, height: 16)
                 }
             }
             .contentShape(Rectangle())
@@ -342,48 +359,74 @@ struct HomeView: View {
             statCard(
                 title: "Dictations",
                 value: "\(entries.count)",
+                detail: "\(dictationsThisWeek) this week",
                 icon: "waveform",
-                color: DS.accent
+                tint: DS.tintHome
             )
             statCard(
                 title: "Model",
                 value: appState.isModelLoaded ? "Ready" : "Loading",
-                icon: "cpu",
-                color: appState.isModelLoaded ? .green : .orange
+                detail: modelDetail,
+                icon: "cpu.fill",
+                tint: appState.isModelLoaded ? DS.tintDictionary : .orange
             )
             statCard(
                 title: "AI Enhance",
                 value: appState.isLLMAvailable ? "Active" : "Off",
+                detail: appState.isLLMAvailable ? "Connected" : "Not configured",
                 icon: "sparkles",
-                color: appState.isLLMAvailable ? .purple : DS.textTertiary
+                tint: appState.isLLMAvailable ? DS.tintStyle : DS.textTertiary
             )
         }
     }
 
-    private func statCard(title: String, value: String, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3.weight(.medium))
-                .foregroundStyle(color)
+    private var dictationsThisWeek: Int {
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return entries.filter { $0.timestamp >= weekAgo }.count
+    }
 
-            Text(value)
-                .font(.title2.bold())
-                .foregroundStyle(DS.textPrimary)
+    private var modelDetail: String {
+        let model = UserDefaults.standard.string(forKey: "whisperModel") ?? "base"
+        return "\(model) · on-device"
+    }
 
-            Text(title)
-                .font(.callout)
-                .foregroundStyle(DS.textSecondary)
+    private func statCard(title: String, value: String, detail: String, icon: String, tint: Color)
+        -> some View
+    {
+        VStack(alignment: .leading, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(tint.opacity(0.15))
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(value)
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(DS.textPrimary)
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(DS.textSecondary)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(DS.textTertiary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.glassRadius))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(value)")
+        .overlay(alignment: .top) { tint.frame(height: 2) }  // colored top accent
+        .clipShape(RoundedRectangle(cornerRadius: DS.glassRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: DS.glassRadius)
-                .stroke(DS.cardBorder, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: DS.glassRadius).stroke(DS.cardBorder, lineWidth: 0.5)
         )
         .shadow(color: DS.glassShadow, radius: 8, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value), \(detail)")
     }
 
 }
