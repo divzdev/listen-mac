@@ -8,7 +8,7 @@ final class AudioCaptureService: ObservableObject {
     @Published var isRecording: Bool = false
     @Published var audioLevel: Float = 0.0
 
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine = AVAudioEngine()
     private var audioBuffer: [Float] = []
     private let bufferLock = NSLock()
     private let silenceDetector = SilenceDetector()
@@ -24,10 +24,23 @@ final class AudioCaptureService: ObservableObject {
     private var configChangeObserver: NSObjectProtocol?
 
     init() {
-        // After sleep/wake or audio device changes, AVAudioEngine stops and may
-        // invalidate taps without our knowledge. Register for the notification so
-        // we can reset state and prevent a "tap already installed" crash the next
-        // time beginCapture() calls installTap(onBus:).
+        registerConfigChangeObserver()
+    }
+
+    deinit {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Observe configuration changes (sleep/wake, audio device connect/disconnect). When one
+    /// fires mid-recording, AVAudioEngine stops and may invalidate taps without our knowledge —
+    /// reset state so the next beginCapture() starts clean. The observer is bound to a specific
+    /// engine instance, so it must be re-registered whenever `audioEngine` is rebuilt.
+    private func registerConfigChangeObserver() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         configChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: audioEngine,
@@ -41,10 +54,19 @@ final class AudioCaptureService: ObservableObject {
         }
     }
 
-    deinit {
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
+    /// Tear down the current engine and build a fresh one so the input node reflects the
+    /// CURRENT audio hardware. AVAudioEngine caches the input device's format; when an
+    /// accessory (AirPods, headset) is connected or removed while the engine sits idle between
+    /// dictations, that cached format goes stale and the next installTap/start raises a
+    /// format-mismatch exception — capture fails until the app is restarted. Rebuilding gives a
+    /// fresh engine that reads the live hardware, the same clean state as a restart.
+    private func rebuildEngine() {
+        if audioEngine.isRunning {
+            audioEngine.stop()
         }
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine = AVAudioEngine()
+        registerConfigChangeObserver()
     }
 
     // MARK: - Permission
@@ -143,13 +165,11 @@ final class AudioCaptureService: ObservableObject {
             return
         }
 
+        // Rebuild the engine so the input node reflects the device that's connected RIGHT NOW.
+        // Without this, an accessory swap (AirPods on/off) while idle leaves a stale cached
+        // hardware format and capture fails until restart.
+        rebuildEngine()
         let inputNode = audioEngine.inputNode
-
-        if audioEngine.isRunning {
-            audioEngine.stop()
-        }
-        // Always clear any existing tap before installing a new one.
-        inputNode.removeTap(onBus: 0)
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
         // An unavailable / not-ready input device reports a 0 Hz, 0-channel format, which makes
