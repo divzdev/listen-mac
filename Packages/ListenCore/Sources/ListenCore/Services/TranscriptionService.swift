@@ -45,9 +45,42 @@ public final class TranscriptionService: ObservableObject {
 
     // MARK: - Transcription
 
+    // Serialize all transcription: WhisperKit must not run two transcriptions on one instance at
+    // once. This is enforced HERE, not in callers — a caller that times out or is cancelled can't
+    // actually stop an in-flight WhisperKit call (there's no cancellation check), so the next call
+    // must wait for it here rather than overlapping. Safe because this type is @MainActor: the
+    // busy-flag reads/writes never interleave except across the explicit awaits below.
+    private var isBusy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    private func acquire() async throws {
+        while isBusy {
+            await withCheckedContinuation { waiters.append($0) }
+            if Task.isCancelled {
+                // Hand the baton to the next waiter before bailing so nobody is stranded.
+                if !isBusy, !waiters.isEmpty {
+                    waiters.removeFirst().resume()
+                }
+                throw CancellationError()
+            }
+        }
+        isBusy = true
+    }
+
+    private func release() {
+        isBusy = false
+        if !waiters.isEmpty {
+            waiters.removeFirst().resume()
+        }
+    }
+
     /// Transcribe an audio buffer (Float array at 16kHz).
-    /// Calls back with partial results during transcription.
+    /// Calls back with partial results during transcription. Serialized: concurrent callers run
+    /// strictly one at a time.
     public func transcribe(audioArray: [Float], language: String? = nil) async throws -> String {
+        try await acquire()
+        defer { release() }
+
         guard let whisperKit else {
             throw TranscriptionError.modelNotLoaded
         }
@@ -62,15 +95,23 @@ public final class TranscriptionService: ObservableObject {
         }
         options.chunkingStrategy = .vad
 
-        let results: [TranscriptionResult] = try await whisperKit.transcribe(
-            audioArray: audioArray,
-            decodeOptions: options
-        ) { progress in
-            // Update partial text on each callback
-            Task { @MainActor in
-                self.partialText = progress.text
+        // Bridge Swift cancellation into WhisperKit's callback protocol (returning false stops
+        // inference) — without this, a caller's timeout/cancel can't actually end the work, and
+        // "recovery" would silently wait for the full transcription anyway.
+        let cancelled = CancelFlag()
+        let results: [TranscriptionResult] = try await withTaskCancellationHandler {
+            try await whisperKit.transcribe(
+                audioArray: audioArray,
+                decodeOptions: options
+            ) { progress in
+                // Update partial text on each callback
+                Task { @MainActor in
+                    self.partialText = progress.text
+                }
+                return !cancelled.isSet  // false stops transcription early
             }
-            return true // continue transcription
+        } onCancel: {
+            cancelled.set()
         }
 
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -84,6 +125,24 @@ public final class TranscriptionService: ObservableObject {
         partialText = ""
         finalText = ""
         isTranscribing = false
+    }
+}
+
+/// Thread-safe cancellation flag readable from WhisperKit's non-isolated progress callback.
+private final class CancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return flag
+    }
+
+    func set() {
+        lock.lock()
+        flag = true
+        lock.unlock()
     }
 }
 

@@ -1,6 +1,7 @@
 import AVFoundation
 import Cocoa
 import Combine
+import OSLog
 import ServiceManagement
 
 /// Handles app-level setup: Accessibility permissions, login item, menu bar status item.
@@ -11,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("[Listen] applicationDidFinishLaunching")
+        AppLog.app.notice("applicationDidFinishLaunching")
 
         // Always prompt for Accessibility if not currently trusted
         if !AXIsProcessTrusted() {
@@ -50,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
         }
 
-        print("[Listen] Status bar menu created")
+        AppLog.app.info("Status bar menu created")
     }
 
     private func updateStatusIcon(_ status: AppState.DictationStatus) {
@@ -202,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            print("[Listen] Failed to set launch at login: \(error)")
+            AppLog.app.error("Failed to set launch at login: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

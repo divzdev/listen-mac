@@ -20,6 +20,9 @@ struct SettingsView: View {
     @AppStorage("triggerMethod") private var triggerMethod = "fnKey"
     @AppStorage("showOverlay") private var showOverlay = true
     @AppStorage("grammarCorrection") private var grammarCorrection = true
+    @AppStorage("smartFormatting") private var smartFormatting = true
+    @AppStorage("streamInsertion") private var streamInsertion = true
+    @AppStorage("playSounds") private var playSounds = true
     @AppStorage("showNotification") private var showNotification = false
     @AppStorage("llmBackend") private var llmBackend = "none"
     @AppStorage("ollamaHost") private var ollamaHost = "http://localhost:11434"
@@ -91,13 +94,29 @@ struct SettingsView: View {
             }
 
             Section("Display") {
-                Toggle("Show transcript overlay while dictating", isOn: $showOverlay)
+                Toggle("Show waveform overlay while dictating", isOn: $showOverlay)
+                Toggle("Play sounds on start/stop", isOn: $playSounds)
                 Toggle("Show notification on dictation complete", isOn: $showNotification)
             }
 
             Section("Text Processing") {
+                Toggle("Type text as I speak", isOn: $streamInsertion)
+                Text(
+                    "Inserts each phrase into the app at natural pauses, like built-in dictation. "
+                        + "Streamed text is final, so AI restructuring (lists, paragraphs) only "
+                        + "applies when this is off."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Toggle("Smart formatting", isOn: $smartFormatting)
+                Text(
+                    "Structures your dictation — lists, paragraphs, punctuation. Uses your AI "
+                        + "backend when configured (best results), or on-device rules otherwise."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Toggle("Auto-correct grammar", isOn: $grammarCorrection)
-                Text("Applies rule-based grammar fixes to transcriptions.")
+                Text("Applies grammar fixes when smart formatting is off.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

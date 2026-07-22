@@ -130,8 +130,18 @@ struct OnboardingView: View {
                 .fontWeight(.semibold)
 
             Text(
-                "Listen uses Accessibility to insert text directly into the focused app. Without it, text is copied to clipboard instead."
+                "Listen needs Accessibility for two things: to detect your fn-key hold while other "
+                    + "apps are focused, and to paste text into them. Without it the fn hotkey "
+                    + "won't trigger at all."
             )
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+
+            Text(
+                "Tip: run Listen from your Applications folder — if you launch it from Downloads or "
+                    + "the disk image, macOS won't remember this permission."
+            )
+            .font(.caption)
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
 

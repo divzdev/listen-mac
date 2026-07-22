@@ -1,6 +1,7 @@
 import Carbon
 import Cocoa
 import HotKey
+import OSLog
 
 /// Manages dictation trigger via fn key (default) or custom hotkey.
 /// fn key: hold to talk, release to stop. Requires Accessibility permission for global monitoring.
@@ -45,9 +46,6 @@ final class HotKeyManager {
     private var safetyTimer: DispatchWorkItem?
     private static let maxRecordingDuration: TimeInterval = 120
 
-    /// Callback when recording should be forcefully stopped (e.g. safety timeout).
-    var onSafetyTimeout: (() -> Void)?
-
     /// Register the dictation trigger based on current triggerMethod.
     func register() {
         unregister()
@@ -55,6 +53,7 @@ final class HotKeyManager {
         case .fnKey:
             registerFnKey()
         case .customHotkey:
+            AppLog.hotkey.notice("Registering custom hotkey trigger")
             registerCustomHotkey()
         }
     }
@@ -76,6 +75,15 @@ final class HotKeyManager {
         fnPressedTime = nil
         // Remove Carbon hotkey
         hotKey = nil
+        isRecording = false
+    }
+
+    /// Externally end the recording state (e.g. the user clicked ✓/✕ on the overlay pill instead
+    /// of using the key). Without this, toggle mode would treat the next press as a "stop".
+    func syncRecordingEnded() {
+        cancelFnTimer()
+        cancelSafetyTimer()
+        fnPressedTime = nil
         isRecording = false
     }
 
@@ -107,6 +115,16 @@ final class HotKeyManager {
     // MARK: - fn Key Support
 
     private func registerFnKey() {
+        // The global key monitor only receives events when the app is trusted for Accessibility.
+        // Without it, the fn key silently does nothing in other apps — the #1 "I gave permissions
+        // but it doesn't work" report. Log it loudly so it's diagnosable from `log show`.
+        if !AXIsProcessTrusted() {
+            AppLog.hotkey.error(
+                "fn-key trigger active but Accessibility is NOT granted — global key monitor will receive nothing. Enable Listen in System Settings > Privacy & Security > Accessibility, and run it from /Applications."
+            )
+        } else {
+            AppLog.hotkey.notice("fn-key trigger active, Accessibility granted")
+        }
         // Global monitor: captures fn key events in other apps (needs Accessibility)
         globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) {
             [weak self] event in
@@ -118,6 +136,7 @@ final class HotKeyManager {
             self?.handleFnFlagsChanged(event)
             return event
         }
+        AppLog.hotkey.notice("fn-key monitors installed (global+local)")
     }
 
     private func handleFnFlagsChanged(_ event: NSEvent) {
@@ -147,6 +166,7 @@ final class HotKeyManager {
             let timer = DispatchWorkItem { [weak self] in
                 guard let self, self.fnPressedTime != nil else { return }
                 self.isRecording = true
+                AppLog.hotkey.notice("fn held past debounce — starting recording")
                 DispatchQueue.main.async {
                     self.onRecordingStarted?()
                 }
@@ -179,13 +199,14 @@ final class HotKeyManager {
         cancelSafetyTimer()
         let timer = DispatchWorkItem { [weak self] in
             guard let self, self.isRecording else { return }
-            print(
-                "[Listen] Safety timeout: auto-stopping recording after \(Self.maxRecordingDuration)s"
+            AppLog.hotkey.info(
+                "Safety timeout: auto-stopping recording after \(Self.maxRecordingDuration, privacy: .public)s"
             )
             self.isRecording = false
+            // Gracefully stop and process what was recorded (same as a normal stop) — do NOT also
+            // force-idle in the same hop, which would tear the dictation down mid-processing.
             DispatchQueue.main.async {
                 self.onRecordingStopped?()
-                self.onSafetyTimeout?()
             }
         }
         safetyTimer = timer

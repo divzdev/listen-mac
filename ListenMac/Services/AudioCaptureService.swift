@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import CoreAudio
+import OSLog
 
 /// Captures microphone audio via AVAudioEngine and accumulates Float samples
 /// at 16kHz mono (WhisperKit's expected format).
@@ -47,7 +48,7 @@ final class AudioCaptureService: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            print("[Listen] Audio engine reconfigured (sleep/wake or device change) — resetting state")
+            AppLog.audio.info("Audio engine reconfigured (sleep/wake or device change) — resetting state")
             self.audioEngine.inputNode.removeTap(onBus: 0)
             self.isRecording = false
             self.audioLevel = 0.0
@@ -74,21 +75,21 @@ final class AudioCaptureService: ObservableObject {
     /// Pre-request mic permission at app launch so it's ready when user presses fn.
     func requestPermission() {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        print("[Listen] Mic permission status: \(status.rawValue)")
+        AppLog.audio.info("Mic permission status: \(status.rawValue, privacy: .public)")
         switch status {
         case .authorized:
             hasMicPermission = true
-            print("[Listen] Mic already authorized")
+            AppLog.audio.info("Mic already authorized")
         case .notDetermined:
-            print("[Listen] Requesting mic permission...")
+            AppLog.audio.info("Requesting mic permission...")
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                print("[Listen] Mic permission granted: \(granted)")
+                AppLog.audio.info("Mic permission granted: \(granted, privacy: .public)")
                 DispatchQueue.main.async {
                     self?.hasMicPermission = granted
                 }
             }
         case .denied, .restricted:
-            print("[Listen] Mic permission denied/restricted")
+            AppLog.audio.error("Mic permission denied/restricted")
             hasMicPermission = false
         @unknown default:
             break
@@ -99,13 +100,13 @@ final class AudioCaptureService: ObservableObject {
 
     /// Start capturing audio immediately. Mic permission should be pre-requested.
     func startRecording() {
-        print("[Listen] startRecording called, hasMicPermission=\(hasMicPermission)")
+        AppLog.audio.info("startRecording called, hasMicPermission=\(self.hasMicPermission, privacy: .public)")
         if hasMicPermission {
             beginCapture()
         } else {
             // Try requesting on-the-fly as fallback
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                print("[Listen] Late mic permission: \(granted)")
+                AppLog.audio.info("Late mic permission: \(granted, privacy: .public)")
                 guard granted else { return }
                 DispatchQueue.main.async {
                     self?.hasMicPermission = true
@@ -119,7 +120,7 @@ final class AudioCaptureService: ObservableObject {
     @discardableResult
     func stopRecording() -> [Float] {
         guard isRecording else {
-            print("[Listen] stopRecording called but not recording")
+            AppLog.audio.info("stopRecording called but not recording")
             // Safety: force stop engine if it's somehow still running
             forceStopEngine()
             return []
@@ -137,17 +138,35 @@ final class AudioCaptureService: ObservableObject {
         audioBuffer.removeAll()
         bufferLock.unlock()
 
-        print(
-            "[Listen] stopRecording: captured \(result.count) samples (\(String(format: "%.1f", Double(result.count) / 16000.0))s)"
+        AppLog.audio.info(
+            "stopRecording: captured \(result.count, privacy: .public) samples (\(String(format: "%.1f", Double(result.count) / 16000.0), privacy: .public)s)"
         )
         return result
+    }
+
+    /// Total samples captured so far in this recording (without stopping or clearing).
+    func sampleCount() -> Int {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
+        return audioBuffer.count
+    }
+
+    /// Copy the sample range [start, end) — used by streaming insertion to transcribe one
+    /// phrase-segment while recording continues. Bounds are clamped; returns a fresh array so the
+    /// tap thread's appends can't COW-copy the whole buffer under the lock.
+    func samples(from start: Int, to end: Int) -> [Float] {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
+        let upper = min(end, audioBuffer.count)
+        guard start >= 0, start < upper else { return [] }
+        return Array(audioBuffer[start..<upper])
     }
 
     /// Force-stop the audio engine unconditionally. Call this as a safety net.
     func forceStopEngine() {
         if audioEngine.isRunning {
             audioEngine.stop()
-            print("[Listen] forceStopEngine: engine stopped")
+            AppLog.audio.info("forceStopEngine: engine stopped")
         }
         // Always remove tap regardless of engine state to prevent "tap already installed" crash
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -161,7 +180,7 @@ final class AudioCaptureService: ObservableObject {
 
     private func beginCapture() {
         guard !isRecording else {
-            print("[Listen] beginCapture ignored — already recording")
+            AppLog.audio.info("beginCapture ignored — already recording")
             return
         }
 
@@ -175,7 +194,7 @@ final class AudioCaptureService: ObservableObject {
         // An unavailable / not-ready input device reports a 0 Hz, 0-channel format, which makes
         // installTap raise a fatal exception. Bail gracefully with a message instead.
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            print("[Listen] Invalid input format: \(inputFormat)")
+            AppLog.audio.error("Invalid input format: \(inputFormat, privacy: .public)")
             notifyCaptureError(
                 "No microphone is available. Check your input device and microphone permission "
                     + "in System Settings → Privacy & Security → Microphone.")
@@ -191,12 +210,12 @@ final class AudioCaptureService: ObservableObject {
                 interleaved: false
             )
         else {
-            print("[Listen] Failed to create target audio format")
+            AppLog.audio.error("Failed to create target audio format")
             return
         }
 
         guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            print("[Listen] Failed to create audio converter")
+            AppLog.audio.error("Failed to create audio converter")
             return
         }
 
@@ -229,7 +248,7 @@ final class AudioCaptureService: ObservableObject {
                     }
 
                     if let error {
-                        print("[Listen] Audio conversion error: \(error)")
+                        AppLog.audio.error("Audio conversion error: \(error, privacy: .public)")
                         return
                     }
 
@@ -258,7 +277,7 @@ final class AudioCaptureService: ObservableObject {
                 }
             }
         } catch {
-            print("[Listen] installTap failed: \(error.localizedDescription)")
+            AppLog.audio.error("installTap failed: \(error.localizedDescription, privacy: .public)")
             inputNode.removeTap(onBus: 0)
             notifyCaptureError("Couldn't start the microphone: \(error.localizedDescription)")
             return
@@ -269,7 +288,7 @@ final class AudioCaptureService: ObservableObject {
             try audioEngine.start()
             isRecording = true
         } catch {
-            print("[Listen] Failed to start audio engine: \(error)")
+            AppLog.audio.error("Failed to start audio engine: \(error, privacy: .public)")
             inputNode.removeTap(onBus: 0)
             notifyCaptureError("Couldn't start audio: \(error.localizedDescription)")
         }
@@ -287,6 +306,12 @@ final class AudioCaptureService: ObservableObject {
     func updateSilenceSettings(threshold: Float, duration: TimeInterval) {
         silenceDetector.silenceThreshold = threshold
         silenceDetector.silenceDuration = duration
+    }
+
+    /// The RMS level above which audio counts as speech — the SAME threshold the silence
+    /// auto-stop uses, so streaming's pause detection can never disagree with it.
+    var speechThreshold: Float {
+        silenceDetector.silenceThreshold
     }
 
     /// Set the preferred audio input device by its unique ID.
@@ -327,7 +352,7 @@ final class AudioCaptureService: ObservableObject {
         }
 
         guard deviceID != 0 else {
-            print("[Listen] Could not find audio device with ID: \(uniqueID)")
+            AppLog.audio.info("Could not find audio device with ID: \(uniqueID, privacy: .public)")
             return
         }
 
@@ -342,9 +367,9 @@ final class AudioCaptureService: ObservableObject {
             AudioObjectID(kAudioObjectSystemObject), &defaultAddress, 0, nil, propertySize,
             &deviceID)
         if status == noErr {
-            print("[Listen] Set preferred input device: \(uniqueID)")
+            AppLog.audio.info("Set preferred input device: \(uniqueID, privacy: .public)")
         } else {
-            print("[Listen] Failed to set input device: \(status)")
+            AppLog.audio.error("Failed to set input device: \(status, privacy: .public)")
         }
     }
 

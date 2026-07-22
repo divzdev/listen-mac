@@ -525,171 +525,167 @@ struct LLMServiceTests {
     }
 }
 
-// MARK: - LLM Response Cleaning Tests
+// MARK: - LLM Output Contract Tests
 
-@Suite("LLMResponseCleaning")
-struct LLMResponseCleaningTests {
-    let service = LLMService(backend: .none)
+@Suite("LLMOutputContract")
+struct LLMOutputContractTests {
+    typealias Invariant = LLMService.OutputInvariant
 
-    @Test func cleanText_passesThrough() async {
-        let result = await service.cleanLLMResponse(
-            "Hello world, this is fine.",
-            originalText: "hello world this is fine"
-        )
+    func validate(_ raw: String, input: String, _ invariant: Invariant = .preservesContent)
+        throws -> String
+    {
+        try LLMService.validated(raw, input: input, invariant: invariant)
+    }
+
+    // MARK: Extraction by markers (structural — replaces all preamble/postamble patterns)
+
+    @Test func extractsTextBetweenMarkers() throws {
+        let result = try validate(
+            "<output>Hello world, this is fine.</output>",
+            input: "hello world this is fine")
         #expect(result == "Hello world, this is fine.")
     }
 
-    @Test func stripsPreamble_hereIsTheCorrectedVersion() async {
-        let result = await service.cleanLLMResponse(
-            "Here is the corrected version:\n\nHello world, this is correct.",
-            originalText: "hello world this is correct"
-        )
+    @Test func preambleOutsideMarkersIsDiscarded() throws {
+        // The historical "Here is the corrected version:" incident — now dropped by
+        // construction because it's outside the markers, not by a regex that knows the phrase.
+        let result = try validate(
+            "Here is the corrected version:\n<output>Hello world, this is correct.</output>",
+            input: "hello world this is correct")
         #expect(result == "Hello world, this is correct.")
     }
 
-    @Test func stripsPreamble_hereIsTheRewrittenText() async {
-        let result = await service.cleanLLMResponse(
-            "Here's the rewritten text:\n\nHello world.",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
-    }
-
-    @Test func stripsPreamble_correctedVersion() async {
-        let result = await service.cleanLLMResponse(
-            "Corrected version:\nHello world.",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
-    }
-
-    @Test func stripsPreamble_sure() async {
-        let result = await service.cleanLLMResponse(
-            "Sure! Here's the corrected text:\n\nHello world.",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
-    }
-
-    @Test func stripsPostamble_changesList() async {
-        let result = await service.cleanLLMResponse(
-            "Hello world, this is correct.\n\nI made the following changes:\n- Changed \"helo\" to \"hello\"\n- Added comma",
-            originalText: "helo world this is correct"
-        )
+    @Test func postambleOutsideMarkersIsDiscarded() throws {
+        let result = try validate(
+            "<output>Hello world, this is correct.</output>\nI made the following changes:\n- Fixed spelling",
+            input: "helo world this is correct")
         #expect(result == "Hello world, this is correct.")
     }
 
-    @Test func stripsPostamble_changesApplied() async {
-        let result = await service.cleanLLMResponse(
-            "Hello world.\n\nChanges:\n- Fixed spelling",
-            originalText: "helo world"
-        )
-        #expect(result == "Hello world.")
+    @Test func missingMarkersIsRejected() {
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate("Hello world.", input: "hello world")
+        }
     }
 
-    @Test func stripsBothPreambleAndPostamble() async {
-        let result = await service.cleanLLMResponse(
-            "Here is the corrected version:\n\nHello world.\n\nI made the following changes:\n- Fixed grammar",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
+    @Test func emptyOutputIsRejected() {
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate("<output>  </output>", input: "hello world")
+        }
     }
 
-    @Test func removesWrappingQuotes() async {
-        let result = await service.cleanLLMResponse(
-            "\"Hello world, this is correct.\"",
-            originalText: "hello world this is correct"
-        )
-        #expect(result == "Hello world, this is correct.")
+    // MARK: Content-preservation invariant (structural — replaces meta-phrase denylists)
+
+    @Test func metaCommentaryInsteadOfTextIsRejected() {
+        // Historical incident: grammar pass returned commentary, not the corrected text. The
+        // invariant rejects it because none of the input's words survive — no phrase list.
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate(
+                "<output>There is no error to fix in this sentence. It appears to be an expression of exasperation.</output>",
+                input: "ugh")
+        }
     }
 
-    @Test func preservesQuotesWhenOriginalHadThem() async {
-        let result = await service.cleanLLMResponse(
-            "\"Hello world\"",
-            originalText: "\"hello world\""
-        )
-        #expect(result == "\"Hello world\"")
+    @Test func alreadyCorrectCommentaryIsRejected() {
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate(
+                "<output>The text is already grammatically correct. No changes needed.</output>",
+                input: "Hello world.")
+        }
     }
 
-    @Test func stripsPreamble_caseInsensitive() async {
-        let result = await service.cleanLLMResponse(
-            "HERE IS THE CORRECTED TEXT:\n\nHello world.",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
+    @Test func answeringAQuestionInsteadOfFormattingIsRejected() {
+        // Real incident: user dictated a short question; the 8B model replied with paragraphs
+        // of invented fiction about an internet outage.
+        let hallucination =
+            "<output>I'm experiencing some issues with my internet connection right now. It's been really slow all morning and I've tried restarting my router but it's still not working properly. Firstly, the speed test that I ran earlier showed a download speed of only 2 megabits per second. Secondly, when I try to load websites they freeze on me. Thirdly, my email client is taking ages to sync.</output>"
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate(hallucination, input: "why are you so slow")
+        }
     }
 
-    @Test func stripsPreamble_certainly() async {
-        let result = await service.cleanLLMResponse(
-            "Certainly! Here is the rewritten text:\n\nHello world.",
-            originalText: "hello world"
-        )
-        #expect(result == "Hello world.")
+    @Test func totalRewriteIsRejected() {
+        #expect(throws: LLMService.LLMError.self) {
+            _ = try validate(
+                "<output>The weather is lovely today and the birds are singing.</output>",
+                input: "remind me to call mom tomorrow afternoon")
+        }
     }
 
-    @Test func stripsPreamble_exactUserReportedIssue() async {
-        // Exact LLM output a user reported — "Here is the corrected text:" preamble
-        let llmOutput =
-            "Here is the corrected text:\n\nI want to release this as an open-source version for the public, just a Mac version. I want to create a repository on GitHub and then push it. So, how do I do that?"
-        let original =
-            "I want to release this as an open-source version for the public, just a Mac version. I want to create a repository on GitHub and then push it. So, how do I do that?"
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
-        #expect(result == original)
+    @Test func honestReformattingIsAccepted() throws {
+        let result = try validate(
+            "<output>I need three things from the store:\n1. Milk\n2. Eggs\n3. Bread</output>",
+            input: "i need three things from the store first milk second eggs third bread")
+        #expect(result.contains("1. Milk"))
     }
 
-    // MARK: - Meta-commentary detection
-
-    @Test func metaCommentary_noErrorToFix() async {
-        // Exact response user reported when recording silence
-        let llmOutput =
-            "There is no error to fix in this sentence. It appears to be an expression of exasperation or frustration, which can be grammatically correct as a standalone utterance."
-        let original = "ugh"
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
-        #expect(result == original)
+    @Test func fillerRemovalIsAccepted() throws {
+        let result = try validate(
+            "<output>I think we should ship the feature tomorrow.</output>",
+            input: "um so like I think we should you know ship the feature tomorrow")
+        #expect(result == "I think we should ship the feature tomorrow.")
     }
 
-    @Test func metaCommentary_alreadyCorrect() async {
-        let llmOutput = "The text is already grammatically correct. No changes needed."
-        let original = "Hello world."
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
-        #expect(result == original)
-    }
-
-    @Test func metaCommentary_noCorrectionsNeeded() async {
-        let llmOutput = "No corrections needed. The sentence is correct as written."
-        let original = "I went to the store."
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
-        #expect(result == original)
-    }
-
-    @Test func metaCommentary_nothingToFix() async {
-        let llmOutput = "There are no errors found in this text. It is grammatically correct."
-        let original = "The quick brown fox jumps over the lazy dog."
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
-        #expect(result == original)
-    }
-
-    @Test func metaCommentary_doesNotFalsePositive() async {
-        // A legitimate corrected sentence that happens to contain the word "correct"
-        let llmOutput = "I need to correct this document before the deadline."
-        let original = "i need to correct this document before the deadline"
-        let result = await service.cleanLLMResponse(llmOutput, originalText: original)
+    @Test func legitimateCorrectionThatMentionsCorrectIsAccepted() throws {
+        // A sentence containing the word "correct" must not be mistaken for commentary —
+        // the old phrase-denylist approach was vulnerable to exactly this false positive.
+        let result = try validate(
+            "<output>I need to correct this document before the deadline.</output>",
+            input: "i need to correct this document before the deadline")
         #expect(result == "I need to correct this document before the deadline.")
     }
 
-    @Test func isMetaCommentary_detectsExplanation() async {
-        let result = await service.isMetaCommentary(
-            "There is no error to fix in this sentence.",
-            originalText: "hello"
-        )
-        #expect(result == true)
+    // MARK: Transform invariant (rewrites may change words — only the contract is checked)
+
+    @Test func summarizeMayShortenAndReword() throws {
+        let result = try validate(
+            "<output>Call mom tomorrow.</output>",
+            input: "so I was thinking that at some point tomorrow I really need to remember to call my mother",
+            .transforms)
+        #expect(result == "Call mom tomorrow.")
+    }
+}
+
+// MARK: - DictationFormatter (rule-based smart formatting)
+
+@Suite("DictationFormatter")
+struct DictationFormatterTests {
+    let formatter = DictationFormatter()
+
+    @Test func ordinalEnumeration_becomesNumberedList() {
+        let result = formatter.format("first milk second eggs third bread")
+        #expect(result == "1. Milk\n2. Eggs\n3. Bread")
     }
 
-    @Test func isMetaCommentary_normalTextIsNot() async {
-        let result = await service.isMetaCommentary(
-            "Hello, how are you?",
-            originalText: "hello how are you"
-        )
-        #expect(result == false)
+    @Test func enumerationWithLeadIn_keepsLeadInAsHeader() {
+        let result = formatter.format(
+            "I need three things from the store first milk second eggs and third bread")
+        #expect(result == "I need three things from the store:\n1. Milk\n2. Eggs\n3. Bread")
+    }
+
+    @Test func numberWordEnumeration_becomesNumberedList() {
+        let result = formatter.format("number one design number two build number three ship")
+        #expect(result == "1. Design\n2. Build\n3. Ship")
+    }
+
+    @Test func singleOrdinal_isNotTreatedAsList() {
+        // "first" appearing once in normal prose must not trigger a list.
+        let result = formatter.format("first of all I want to say thank you")
+        #expect(!result.contains("\n"))
+    }
+
+    @Test func outOfOrderOrdinals_doNotFormAList() {
+        // Only a sequence starting at 1 and counting up should form a list.
+        let result = formatter.format("the third option is best")
+        #expect(!result.contains("1."))
+    }
+
+    @Test func plainProse_isTidiedNotListed() {
+        let result = formatter.format("this is just a normal sentence")
+        #expect(result == "This is just a normal sentence")
+    }
+
+    @Test func empty_returnsEmpty() {
+        #expect(formatter.format("") == "")
     }
 }

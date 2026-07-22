@@ -232,6 +232,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                setupWarnings
                 // Greeting
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Welcome back, \(appState.userFirstName).")
@@ -278,6 +279,77 @@ struct HomeView: View {
                     .allowsHitTesting(false)
             }
             .ignoresSafeArea()
+        }
+        .onAppear { appState.refreshAccessibilityStatus() }
+    }
+
+    /// Loud, actionable warnings for the states that leave a user pressing fn to no effect:
+    /// a permission-breaking install location, a failed model download, or the fn hotkey being
+    /// unusable because Accessibility isn't granted.
+    @ViewBuilder
+    private var setupWarnings: some View {
+        let fnNeedsAccessibility = triggerIsFnKey && !appState.isAccessibilityGranted
+        if appState.installWarning != nil || appState.modelLoadFailed || fnNeedsAccessibility {
+            VStack(spacing: 10) {
+                if let warning = appState.installWarning {
+                    warningRow(icon: "exclamationmark.triangle.fill", tint: .red, text: warning)
+                }
+                if appState.modelLoadFailed {
+                    warningRow(
+                        icon: "arrow.down.circle.fill", tint: .orange,
+                        text: "The speech model failed to download. Check your internet connection, "
+                            + "then retry — dictation can't start until it's ready.",
+                        actionTitle: "Retry"
+                    ) { appState.reloadModel() }
+                }
+                if fnNeedsAccessibility {
+                    warningRow(
+                        icon: "hand.raised.fill", tint: .orange,
+                        text: "The fn hotkey needs Accessibility to work in other apps. Grant it, "
+                            + "then reopen this window — dictation starts working right away.",
+                        actionTitle: "Open Settings"
+                    ) { openAccessibilitySettings() }
+                }
+            }
+            .padding(.horizontal, 36)
+            .padding(.top, 24)
+        }
+    }
+
+    private var triggerIsFnKey: Bool {
+        (UserDefaults.standard.string(forKey: "triggerMethod") ?? "fnKey") == "fnKey"
+    }
+
+    private func warningRow(
+        icon: String, tint: Color, text: String, actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(DS.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.35), lineWidth: 1))
+    }
+
+    private func openAccessibilitySettings() {
+        if let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        {
+            NSWorkspace.shared.open(url)
         }
     }
 

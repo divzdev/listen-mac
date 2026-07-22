@@ -1,5 +1,6 @@
 import AVFoundation
 import ListenCore
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -41,7 +42,7 @@ struct ListenApp: App {
                     // Give AppDelegate the appState so the status bar menu can use it
                     appDelegate.appState = appState
                     appDelegate.setupStatusBarMenu()
-                    print("[Listen] Setup complete, UI should be visible")
+                    AppLog.app.notice("Setup complete, UI should be visible")
                 }
         }
         .defaultSize(width: 900, height: 600)
